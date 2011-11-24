@@ -78,6 +78,15 @@ $origin_master_name = $repo->getTip('refs/remotes/origin/master');
 $origin_master = $repo->getObject($tag_name);
 @endcode
 
+When you get bored with branches and tags, try Git::getHead():
+
+@code
+$head_name = $repo->getHead();
+$last_commit = $repo->getObject($head_name);
+
+echo $repo->getHead(false);	// false means 'Do not resolve ref, give me human readable name instead.'
+@endcode
+
 GitObject%s hold all related data in public attributes. For example,
 GitCommit::$summary contains the commit summary of a particular commit.
 Utility functions are provided to make it easier to perform common functions.
