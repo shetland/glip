@@ -1,6 +1,7 @@
 <?php
 /*
  * Copyright (C) 2008, 2009 Patrik Fimml
+ * Copyright (C) 2011 Josef Kufner  <jk@frozen-doe.net>
  *
  * This file is part of glip.
  *
@@ -23,6 +24,7 @@ require_once('git_object.class.php');
 require_once('git_blob.class.php');
 require_once('git_commit.class.php');
 require_once('git_commit_stamp.class.php');
+require_once('git_tag.class.php');
 require_once('git_tree.class.php');
 
 /**
@@ -403,36 +405,185 @@ class Git
     }
 
     /**
-     * @brief Look up a branch.
+     * @brief Look up a branch or tag.
      *
-     * @param $branch (string) The branch to look up, defaulting to @em master.
+     * @param $branch (string) The branch or tag to look up, defaulting to @em master.
      * @returns (string) The tip of the branch (binary sha1).
      */
     public function getTip($branch='master')
     {
-	$subpath = sprintf('refs/heads/%s', $branch);
-	$path = sprintf('%s/%s', $this->dir, $subpath);
-	if (file_exists($path))
-	    return sha1_bin(file_get_contents($path));
-	$path = sprintf('%s/packed-refs', $this->dir);
-	if (file_exists($path))
-	{
-	    $head = NULL;
-	    $f = fopen($path, 'rb');
-	    flock($f, LOCK_SH);
-	    while ($head === NULL && ($line = fgets($f)) !== FALSE)
-	    {
-		if ($line{0} == '#')
-		    continue;
-		$parts = explode(' ', trim($line));
-		if (count($parts) == 2 && $parts[1] == $subpath)
-		    $head = sha1_bin($parts[0]);
-	    }
-	    fclose($f);
-	    if ($head !== NULL)
-		return $head;
-	}
-	throw new Exception(sprintf('no such branch: %s', $branch));
+        if (strchr($branch, '/') !== FALSE)
+        {
+            $subpath = array($branch);
+        }
+        else
+        {
+            $subpath = array(
+                    sprintf('refs/heads/%s', $branch),
+                    sprintf('refs/tags/%s', $branch)
+            );
+        }
+        foreach ($subpath as $sp)
+        {
+            $path = sprintf('%s/%s', $this->dir, $sp);
+            if (file_exists($path))
+                return sha1_bin(file_get_contents($path));
+        }
+        $path = sprintf('%s/packed-refs', $this->dir);
+        if (file_exists($path))
+        {
+            $head = NULL;
+            $f = fopen($path, 'rb');
+            flock($f, LOCK_SH);
+            while ($head === NULL && ($line = fgets($f)) !== FALSE)
+            {
+                if ($line{0} == '#')
+                    continue;
+                $parts = explode(' ', trim($line));
+                if (count($parts) == 2 && in_array($parts[1], $subpath))
+                    $head = sha1_bin($parts[0]);
+            }
+            fclose($f);
+            if ($head !== NULL)
+                return $head;
+        }
+        throw new Exception(sprintf('no such branch: %s', $branch));
+    }
+
+    /**
+     * @brief List all known refs
+     *
+     * @returns (array) List of all known refs (ref -> binary sha1).
+     */
+    public function getRefs()
+    {
+        $refs = array();
+
+        // refs in files
+        foreach (array('refs/heads', 'refs/tags') as $subpath)
+        {
+            $path = sprintf('%s/%s', $this->dir, $subpath);
+            foreach(scandir($path) as $f)
+            {
+                $file = $path.'/'.$f;
+                if ($f[0] != '.' && is_file($file)) {
+                    $refs[$subpath.'/'.$f] = sha1_bin(file_get_contents($file));
+                }
+            }
+        }
+
+        // packed refs
+        $path = sprintf('%s/packed-refs', $this->dir);
+        if (file_exists($path))
+        {
+            $head = NULL;
+            $f = fopen($path, 'rb');
+            flock($f, LOCK_SH);
+            while ($head === NULL && ($line = fgets($f)) !== FALSE)
+            {
+                if ($line{0} == '#')
+                    continue;
+                $parts = explode(' ', trim($line));
+                if (count($parts) == 2)
+                    $refs[$parts[1]] = sha1_bin($parts[0]);
+            }
+            fclose($f);
+            if ($head !== NULL)
+                return $head;
+        }
+
+        return $refs;
+    }
+
+
+    /**
+     * @brief List all tags
+     *
+     * @returns (array) List of all tags (tag name -> binary sha1).
+     */
+    public function getTags()
+    {
+        $tags = array();
+        foreach($this->getRefs() as $ref => $hash)
+        {
+            if (strncmp($ref, 'refs/tags/', 10) == 0)
+            {
+                $tags[substr($ref, 10)] = $hash;
+            }
+        }
+        return $tags;
+    }
+
+    /**
+     * @brief Implementation of 'git describe' (partial)
+     *
+     * @param $commit (GitCommit) Commit to describe or binary sha1 of commit.
+     * @param $abbrev (int) Hash digits count. Hash may not be uniqe, no checks done.
+     * @returns (string) 'git describe' string
+     */
+    public function describe($commit, $abbrev = 7)
+    {
+        if (is_string($commit))
+        {
+            $commit = $this->getObject($commit);
+        }
+
+        if ($commit->getType() == Git::OBJ_TAG)
+        {
+            return $commit->tag;
+        }
+
+        // Load tags and get their objects
+        $tags = array();
+        foreach($this->getTags() as $tag_name => $hash)
+        {
+            $t = $this->getObject($hash);
+            if ($t->getType() == Git::OBJ_TAG)
+            {
+                foreach($t->getObjects() as $obj)
+                {
+                    $tags[$obj] = $t->tag;
+                }
+            }
+        }
+
+        $queue = array(array($commit, 0));
+        $tag_name = false;
+        $tag_depth = false;
+
+        // DFS (simplified for DAG)
+        while (!empty($queue))
+        {
+            list($tag_object, $tag_depth) = array_shift($queue);
+            $commit_name = $tag_object->getName();
+            if (array_key_exists($commit_name, $tags))
+            {
+                // Tag found
+                $tag_name = $tags[$commit_name];
+                break;
+            }
+
+            // enqueue ancestors
+            foreach($tag_object->parents as $parent)
+            {
+                $parent_object = $this->getObject($parent);
+                array_push($queue, array($parent_object, $tag_depth + 1));
+            }
+        }
+
+        // Format result
+        if ($tag_name === false)
+        {
+            return substr(sha1_hex($commit->getName()), 0, $abbrev);
+        }
+        if ($tag_depth == 0)
+        {
+            return $tag_name;
+        }
+        else
+        {
+            return sprintf('%s-%d-g%s', $tag_name, $tag_depth, substr(sha1_hex($commit->getName()), 0, $abbrev));
+        }
     }
 }
 

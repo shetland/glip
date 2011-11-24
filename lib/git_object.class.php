@@ -56,6 +56,8 @@ class GitObject
 	    return new GitCommit($repo);
 	if ($type == Git::OBJ_TREE)
 	    return new GitTree($repo);
+	if ($type == Git::OBJ_TAG)
+	    return new GitTag($repo);
 	if ($type == Git::OBJ_BLOB)
 	    return new GitBlob($repo);
 	throw new Exception(sprintf('unhandled object type %d', $type));
