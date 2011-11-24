@@ -63,14 +63,55 @@ $master_name = $repo->getTip('master');
 $master = $repo->getObject($master_name);
 @endcode
 
-@todo It should be possible to look up any ref, not only branches.
-
 In a common git repository, this will give you a GitCommit instance in
 $master, referring to the last commit made to the @em master branch.
+
+You can also lookup tag or any ref:
+
+@code
+$tag_name = $repo->getTip('v1.0');
+$tag = $repo->getObject($tag_name);
+@endcode
+
+@code
+$origin_master_name = $repo->getTip('refs/remotes/origin/master');
+$origin_master = $repo->getObject($tag_name);
+@endcode
 
 GitObject%s hold all related data in public attributes. For example,
 GitCommit::$summary contains the commit summary of a particular commit.
 Utility functions are provided to make it easier to perform common functions.
+
+@subsection tags_refs Working with tags and refs
+
+Tags and refs can be listed using Git::getTags() and Git::getRefs():
+
+@code
+echo "<ul>\n";
+foreach ($repo->getTags() as $tag => $hash) {
+	echo "<li>", htmlspecialchars($tag), " &rarr; <code>", sha1_hex($hash), "</code></li>\n";
+}
+echo "</ul>\n";
+@endcode
+
+Usage of Git::getRefs is same, but it returns 'refs/tags/v1.0' instead of 'v1.0'.
+
+@subsection describe Git Describe
+
+There is partial reimplementation of handy 'git describe' command in Git::describe():
+
+@code
+$master_name = $repo->getTip('master');
+$master = $repo->getObject($master_name);	// This is optional, Git::describe() can do this for you.
+
+$describe = $repo->describe($master);		// You can use $master_name here also.
+echo htmlspecialchars($describe);
+@endcode
+
+@note Current implementation is way more stupid than original, but it should be
+enough for usual use.
+
+@attention Hash digits included in result string may not uniquely describe commit. There is no check for ambiguous abbrevations.
 
 @section writing Writing to a git repository
 
