@@ -450,6 +450,36 @@ class Git
         throw new Exception(sprintf('no such branch: %s', $branch));
     }
 
+
+    /**
+     * @brief Get current head
+     *
+     * @param $resolve (bool) It true, returned value is binary sha1, otherwise readable string is returned.
+     * @returns (string) Current head as readable string or binary sha1 (depends on $resolve arg.). On error, FALSE is returned.
+     */
+    public function getHead($resolve = true)
+    {
+        $content = file_get_contents($this->dir.'/HEAD');
+
+        if ($content === FALSE)
+        {
+            return FALSE;
+        }
+        else if (sscanf($content, 'ref: %s', $head) == 1)
+        {
+            return $resolve ? $this->getTip($head) : $head;
+        }
+        else if (sscanf($content, '%[0-9a-fA-F]s', $hash) == 1)
+        {
+            return $resolve ? sha1_bin($hash) : $hash;
+        }
+        else
+        {
+            return FALSE;
+        }
+    }
+
+
     /**
      * @brief List all known refs
      *
