@@ -92,7 +92,19 @@ class Git
     public function __construct($dir)
     {
         $this->dir = realpath($dir);
-        if ($this->dir === FALSE || !@is_dir($this->dir))
+        if ($this->dir === FALSE)
+            throw new Exception(sprintf('repository not found: %s', $dir));
+
+        if (is_file($this->dir)) {
+            $repo = file_get_contents($this->dir);
+            if (preg_match('/^gitdir: (.*)/', $repo, $m)) {
+                $this->dir = realpath($m[1]);
+            } else {
+                throw new Exception(sprintf('unknown repository format: %s', $this->dir));
+            }
+        }
+
+        if (!@is_dir($this->dir))
             throw new Exception(sprintf('not a directory: %s', $dir));
 
 	$this->packs = array();
