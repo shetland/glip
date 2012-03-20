@@ -98,7 +98,15 @@ class Git
         if (is_file($this->dir)) {
             $repo = file_get_contents($this->dir);
             if (preg_match('/^gitdir: (.*)/', $repo, $m)) {
-                $this->dir = realpath($m[1]);
+                if ($m[1][0] == '.') {
+                    if (basename($this->dir) == '.git') {
+                        $this->dir = realpath(rtrim(dirname($this->dir), '/').'/'.$m[1]);
+                    } else {
+                        $this->dir = realpath(rtrim($this->dir, '/').'/'.$m[1]);
+                    }
+                } else {
+                    $this->dir = realpath($m[1]);
+                }
             } else {
                 throw new Exception(sprintf('unknown repository format: %s', $this->dir));
             }
