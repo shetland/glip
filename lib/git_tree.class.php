@@ -108,6 +108,30 @@ class GitTree extends GitObject
         }
     }
 
+	/**
+     * @brief Recursively return the contents of a tree in array format
+     *
+     * @returns (array mapping string to string/array) A nestedarray where
+     * the keys are either sha-1 names of corresponding blobs for the files
+     * or another array with similar mappings
+     */
+    public function getRecursive()
+    {
+        $r = array();
+        foreach ($this->nodes as $node)
+        {
+            if ($node->is_dir)
+            {
+              $subtree = $this->repo->getObject($node->object);
+              foreach ($subtree->getRecursive() as $entry => $blob)
+				   $r[$node->name][$entry] = $blob;
+            }
+            else
+			  $r[$node->name] = $node->object;
+        }
+        return $r;
+    }
+    
     /**
      * @brief Recursively list the contents of a tree.
      *
